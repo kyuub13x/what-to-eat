@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>今天吃什麼？卡牌抽籤</title>
+<style>
+  :root {
+    --bg: #FBF3E6;
+    --ink: #5B4636;
+    --ink-soft: #8B7261;
+    --line: #EAD3B6;
+    --peach: #F0A67E;
+    --peach-deep: #E58F62;
+    --paper: #FFFBF3;
+    --c1: #F6D9B8;
+    --c2: #F2C99B;
+    --w: 210px;
+    --h: 290px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    overflow-x: hidden;
+    color: var(--ink);
+    background:
+      radial-gradient(circle at 15% 10%, #FFF6E8 0, transparent 45%),
+      radial-gradient(circle at 90% 90%, #FCE6D5 0, transparent 40%),
+      var(--bg);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  button { font-family: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #E58F62; outline-offset: 2px; }
+
+  /* ---------- 頂部 ---------- */
+  .top { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px 0; max-width: 640px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 28px; letter-spacing: 1px; }
+  .menu-btn { width: 46px; height: 46px; border-radius: 14px; border: 2px solid var(--line); background: var(--paper); font-size: 22px; }
+  .menu-btn:hover { background: #FFF1DE; }
+  .last { text-align: center; margin: 14px 20px 0; font-size: 18px; color: var(--ink-soft); min-height: 28px; }
+  .last strong { color: var(--ink); }
+
+  /* ---------- 舞台 ---------- */
+  .table { display: flex; flex-direction: column; align-items: center; padding: 36px 16px 40px; }
+  .stage { position: relative; width: var(--w); height: var(--h); margin: 20px 0 34px; }
+  .deck-card, .slot { position: absolute; inset: 0; }
+
+  .card-back {
+    border-radius: 18px;
+    border: 2px solid rgba(255,255,255,.7);
+    box-shadow: 0 10px 22px rgba(130, 85, 45, .18);
+  }
+  .card-back::before { content: ""; position: absolute; inset: 10px; border: 2px solid rgba(255,255,255,.75); border-radius: 12px; pointer-events: none; }
+  .emblem {
+    position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; transform: translate(-50%, -50%);
+    display: flex; align-items: center; justify-content: center; font-size: 42px;
+    background: var(--paper); border-radius: 50%; box-shadow: 0 3px 10px rgba(130,85,45,.2);
+  }
+  .pat0 { background: radial-gradient(circle, rgba(255,255,255,.6) 3px, transparent 3.5px) 0 0/18px 18px, var(--c1); }
+  .pat1 { background: repeating-linear-gradient(45deg, var(--c1) 0 10px, var(--c2) 10px 20px); }
+  .pat2 { background: conic-gradient(var(--c2) 25%, var(--c1) 0 50%, var(--c2) 0 75%, var(--c1) 0) 0 0/28px 28px; }
+  .pat3 { background: repeating-radial-gradient(circle at 50% 50%, var(--c1) 0 10px, var(--c2) 10px 20px); }
+  .pat4 {
+    background:
+      linear-gradient(135deg, var(--c2) 25%, transparent 25%) -10px 0/20px 20px,
+      linear-gradient(225deg, var(--c2) 25%, transparent 25%) -10px 0/20px 20px,
+      linear-gradient(315deg, var(--c2) 25%, transparent 25%) 0 0/20px 20px,
+      linear-gradient(45deg, var(--c2) 25%, transparent 25%) 0 0/20px 20px,
+      var(--c1);
+  }
+
+  .deck-card { position: absolute; transform: translate(var(--x), var(--y)) rotate(var(--r)); }
+
+  @keyframes swingL {
+    0%, 100% { transform: translate(var(--x), var(--y)) rotate(var(--r)); }
+    35% { transform: translate(-72px, calc(var(--y) - 10px)) rotate(-10deg); }
+    70% { transform: translate(-14px, var(--y)) rotate(-3deg); }
+  }
+  @keyframes swingR {
+    0%, 100% { transform: translate(var(--x), var(--y)) rotate(var(--r)); }
+    35% { transform: translate(72px, calc(var(--y) - 10px)) rotate(10deg); }
+    70% { transform: translate(14px, var(--y)) rotate(3deg); }
+  }
+  .shuffling .deck-card:nth-child(odd)  { animation: swingL .55s ease-in-out 3; animation-delay: calc(var(--i) * 45ms); }
+  .shuffling .deck-card:nth-child(even) { animation: swingR .55s ease-in-out 3; animation-delay: calc(var(--i) * 45ms); }
+
+  /* 抽出的卡片 */
+  .slot { perspective: 900px; visibility: hidden; }
+  .slot.show, .slot.leaving { visibility: visible; }
+  @keyframes cardIn {
+    from { opacity: 0; transform: translateY(40px) scale(.92); }
+    to   { opacity: 1; transform: translateY(-12px) scale(1); }
+  }
+  @keyframes cardOut {
+    from { opacity: 1; transform: translateY(-12px) scale(1); }
+    to   { opacity: 0; transform: translateY(-40px) scale(.95); }
+  }
+  .slot.show { animation: cardIn .5s ease-out both; }
+  .slot.leaving { animation: cardOut .3s ease-in both; }
+
+  .flipper { position: relative; width: 100%; height: 100%; transform-style: preserve-3d; transition: transform .8s cubic-bezier(.3,.7,.2,1); }
+  .flipper.flipped { transform: rotateY(180deg) scale(1.12); }
+  .flipper.no-anim { transition: none !important; }
+  .face { position: absolute; inset: 0; border-radius: 18px; backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+  .front {
+    transform: rotateY(180deg);
+    background: linear-gradient(160deg, #FFFBF3, #FCE9D2);
+    border: 2px solid #F0D3AE;
+    box-shadow: 0 16px 34px rgba(130, 85, 45, .28);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 16px;
+  }
+  .pic { width: 138px; height: 138px; border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; font-size: 86px; box-shadow: inset 0 0 0 6px #FCE3C8, 0 4px 12px rgba(130,85,45,.15); }
+  .pic-name { font-size: 26px; font-weight: 700; text-align: center; word-break: break-all; }
+
+  /* ---------- 按鈕 ---------- */
+  .hint { margin: 0 0 14px; color: var(--ink-soft); min-height: 24px; text-align: center; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; min-height: 56px; }
+  .btn { padding: 14px 26px; font-size: 18px; font-weight: 700; border-radius: 16px; border: 2px solid var(--line); background: var(--paper); }
+  .btn:hover { background: #FFF1DE; }
+  .btn.primary { background: var(--peach); border-color: var(--peach-deep); color: #4A2E1E; box-shadow: 0 4px 0 var(--peach-deep); }
+  .btn.primary:hover { background: #F3B08C; }
+  .btn.primary:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--peach-deep); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  [hidden] { display: none !important; }
+
+  /* ---------- 提示 ---------- */
+  .toast { position: fixed; left: 50%; bottom: 28px; transform: translate(-50%, 30px); opacity: 0; background: #5B4636; color: #FFF6E8; padding: 12px 20px; border-radius: 14px; transition: .3s; pointer-events: none; z-index: 30; }
+  .toast.on { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- 選單 ---------- */
+  .overlay { position: fixed; inset: 0; background: rgba(91,70,54,.35); opacity: 0; visibility: hidden; transition: opacity .3s, visibility 0s .3s; z-index: 10; }
+  .overlay.open { opacity: 1; visibility: visible; transition: opacity .3s; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(390px, 92vw); background: var(--paper); z-index: 20; transform: translateX(100%); visibility: hidden; transition: transform .3s, visibility 0s .3s; display: flex; flex-direction: column; box-shadow: -8px 0 30px rgba(91,70,54,.2); }
+  .drawer.open { transform: none; visibility: visible; transition: transform .3s; }
+  .drawer-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 18px 8px; }
+  .drawer-head h2 { margin: 0; font-size: 20px; }
+  .close-btn { width: 40px; height: 40px; border-radius: 12px; border: 2px solid var(--line); background: #fff; font-size: 18px; }
+  .tabs { display: flex; gap: 6px; padding: 8px 18px; }
+  .tab { flex: 1; padding: 10px 6px; border-radius: 12px; border: 2px solid var(--line); background: #fff; font-size: 15px; font-weight: 600; }
+  .tab[aria-selected="true"] { background: var(--peach); border-color: var(--peach-deep); color: #4A2E1E; }
+  .panel { padding: 10px 18px 24px; overflow-y: auto; flex: 1; }
+
+  .field { display: flex; gap: 8px; margin-bottom: 8px; }
+  input[type="text"] { flex: 1; min-width: 0; padding: 11px 12px; font-size: 16px; font-family: inherit; color: var(--ink); border: 2px solid var(--line); border-radius: 12px; background: #fff; }
+  input.emoji-in { flex: 0 0 84px; text-align: center; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 10px; }
+  .chip { width: 38px; height: 38px; border-radius: 10px; border: 2px solid var(--line); background: #fff; font-size: 20px; padding: 0; }
+  .chip:hover { background: #FFF1DE; }
+  .msg { min-height: 22px; font-size: 14px; color: #B5562F; margin: 2px 0 8px; }
+  .small-btn { padding: 10px 16px; border-radius: 12px; border: 2px solid var(--line); background: #fff; font-size: 15px; font-weight: 600; }
+  .small-btn.primary { background: var(--peach); border-color: var(--peach-deep); color: #4A2E1E; }
+  .small-btn:hover { filter: brightness(.97); }
+  .small-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .list { list-style: none; padding: 0; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+  .item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: #fff; border: 2px solid var(--line); border-radius: 12px; }
+  .item .e { font-size: 24px; width: 32px; text-align: center; }
+  .item .n { flex: 1; font-weight: 600; word-break: break-all; }
+  .item .t { font-size: 13px; color: var(--ink-soft); }
+  .del { width: 34px; height: 34px; border-radius: 10px; border: 2px solid var(--line); background: #FFF1EE; }
+  .del:disabled { opacity: .4; cursor: not-allowed; }
+  .note { font-size: 14px; color: var(--ink-soft); margin: 6px 0; }
+  .empty { text-align: center; color: var(--ink-soft); padding: 26px 0; }
+  .sub { font-size: 15px; font-weight: 700; margin: 16px 0 8px; }
+  .pat-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .pat-btn { aspect-ratio: 3/4; border-radius: 10px; border: 3px solid transparent; padding: 0; background-clip: padding-box; }
+  .pat-btn[aria-pressed="true"], .color-btn[aria-pressed="true"] { border-color: #5B4636; }
+  .color-row { display: flex; gap: 10px; }
+  .color-btn { width: 40px; height: 40px; border-radius: 50%; border: 3px solid transparent; padding: 0; }
+
+  @media (max-width: 480px) {
+    :root { --w: 176px; --h: 244px; }
+    h1 { font-size: 24px; }
+    .pic { width: 112px; height: 112px; font-size: 70px; }
+    .pic-name { font-size: 22px; }
+    .emblem { width: 64px; height: 64px; font-size: 34px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: .01s !important; transition-duration: .01s !important; }
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>今天吃什麼？</h1>
+  <button class="menu-btn" id="menuBtn" aria-label="開啟選單" aria-expanded="false">☰</button>
+</header>
+<p class="last" id="lastMeal"></p>
+
+<main class="table">
+  <div class="stage" id="stage">
+    <div class="deck" id="deck"></div>
+    <div class="slot" id="slot">
+      <div class="flipper" id="flipper">
+        <div class="face card-back" id="slotBack"><div class="emblem"></div></div>
+        <div class="face front">
+          <div class="pic" id="frontPic"></div>
+          <div class="pic-name" id="frontName"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint" id="hint"></p>
+  <div class="actions">
+    <button class="btn primary" id="drawBtn">抽卡</button>
+    <button class="btn primary" id="eatBtn" hidden>就吃這個！</button>
+    <button class="btn" id="redrawBtn" hidden>再抽一次</button>
+  </div>
+</main>
+
+<div class="overlay" id="overlay"></div>
+<aside class="drawer" id="drawer" aria-label="選單">
+  <div class="drawer-head">
+    <h2>選單</h2>
+    <button class="close-btn" id="closeBtn" aria-label="關閉選單">✕</button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="options" aria-selected="true">新增選項</button>
+    <button class="tab" role="tab" data-tab="history" aria-selected="false">歷史紀錄</button>
+    <button class="tab" role="tab" data-tab="back" aria-selected="false">卡背</button>
+  </div>
+
+  <section class="panel" id="panel-options">
+    <div class="field">
+      <input type="text" id="newName" maxlength="12" placeholder="餐點名稱，例如：牛肉麵" aria-label="餐點名稱">
+      <input type="text" id="newEmoji" class="emoji-in" placeholder="圖案" aria-label="圖案（可空白，自動配對）">
+    </div>
+    <div class="chips" id="chips" aria-label="常用圖案"></div>
+    <div class="msg" id="addMsg" role="status"></div>
+    <button class="small-btn primary" id="addBtn">新增卡片</button>
+    <p class="note">圖案留白會自動配對，配不到就用 🍴。至少要保留 2 張卡。</p>
+    <ul class="list" id="optList"></ul>
+    <button class="small-btn" id="resetBtn">恢復預設選項</button>
+  </section>
+
+  <section class="panel" id="panel-history" hidden>
+    <ul class="list" id="hisList"></ul>
+    <button class="small-btn" id="clearBtn">清除歷史紀錄</button>
+  </section>
+
+  <section class="panel" id="panel-back" hidden>
+    <div class="sub">花紋</div>
+    <div class="pat-grid" id="patGrid"></div>
+    <div class="sub">底色</div>
+    <div class="color-row" id="colorRow"></div>
+    <div class="sub">中間的圖案</div>
+    <div class="field">
+      <input type="text" id="backEmoji" class="emoji-in" maxlength="8" aria-label="卡背圖案">
+      <button class="small-btn" id="backEmojiReset">換回 😋</button>
+    </div>
+  </section>
+</aside>
+
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ===== 預設資料 ===== */
+  var DEFAULT_OPTIONS = [
+    { name: '便當', emoji: '🍱' }, { name: '拉麵', emoji: '🍜' }, { name: '麥當勞', emoji: '🍔' },
+    { name: '火鍋', emoji: '🍲' }, { name: '滷肉飯', emoji: '🍚' }, { name: '義大利麵', emoji: '🍝' },
+    { name: '水餃', emoji: '🥟' }, { name: '壽司', emoji: '🍣' }, { name: '披薩', emoji: '🍕' },
+    { name: '咖哩飯', emoji: '🍛' }, { name: '鹹酥雞', emoji: '🍗' }, { name: '蛋餅', emoji: '🍳' },
+    { name: '自助餐', emoji: '🍴' }
+  ];
+  var COLORS = [
+    ['#F6D9B8', '#F2C99B'], ['#F8D3CB', '#F3BDB1'], ['#E9D3BC', '#DDBFA3'],
+    ['#F7E7B4', '#F1D98F'], ['#F3CFD6', '#EBB9C3']
+  ];
+  var CHIPS = ['🍱','🍜','🍝','🍚','🍛','🍔','🍕','🍲','🍣','🥟','🍗','🥗','🍳','🥪','🍢','🌮','🍰','🧋','🍴'];
+  var GUESS = [
+    [/咖哩/, '🍛'], [/麵|拉麵|烏龍|泡麵|米粉|冬粉/, '🍜'], [/義大利|意麵|pasta/i, '🍝'],
+    [/便當|餐盒/, '🍱'], [/飯|燉飯|丼|粥/, '🍚'], [/漢堡|麥當勞|速食|burger/i, '🍔'],
+    [/薯條/, '🍟'], [/披薩|pizza/i, '🍕'], [/火鍋|鍋/, '🍲'], [/壽司|生魚片|日式|日本/, '🍣'],
+    [/餃|包子|饅頭/, '🥟'], [/雞|鹹酥/, '🍗'], [/牛排|排餐|肉/, '🥩'], [/沙拉|蔬菜|輕食/, '🥗'],
+    [/蛋/, '🍳'], [/吐司|麵包|三明治|早餐/, '🥪'], [/蛋糕|甜點|甜/, '🍰'], [/冰/, '🍦'],
+    [/咖啡/, '☕'], [/茶|飲料|珍珠/, '🧋'], [/湯/, '🥣'], [/滷味|串|烤/, '🍢'],
+    [/捲餅|墨西哥|塔可/, '🌮'], [/熱狗/, '🌭'], [/蝦|海鮮/, '🦐'], [/魚/, '🐟'],
+    [/辣/, '🌶️'], [/韓|泡菜|部隊/, '🥘']
+  ];
+  var KEY_OPT = 'lunchcards.options', KEY_HIS = 'lunchcards.history', KEY_BACK = 'lunchcards.back';
+  var REDUCED = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var SHUFFLE_MS = REDUCED ? 200 : 1700;
+
+  /* ===== localStorage（全部包 try/catch）===== */
+  function load(key, fallback) {
+    try { var v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; }
+  }
+  function save(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+  function clone(a) { return JSON.parse(JSON.stringify(a)); }
+
+  var options = load(KEY_OPT, null);
+  if (!Array.isArray(options) || options.length < 2) options = clone(DEFAULT_OPTIONS);
+  options = options.filter(function (o) { return o && typeof o.name === 'string' && typeof o.emoji === 'string'; });
+  if (options.length < 2) options = clone(DEFAULT_OPTIONS);
+  var history = load(KEY_HIS, []);
+  if (!Array.isArray(history)) history = [];
+  var back = load(KEY_BACK, null);
+  if (!back || typeof back !== 'object') back = {};
+  back = { style: +back.style || 0, color: +back.color || 0, emoji: back.emoji || '😋' };
+  if (back.style < 0 || back.style > 4) back.style = 0;
+  if (back.color < 0 || back.color >= COLORS.length) back.color = 0;
+
+  var state = 'idle';      // idle | busy | result
+  var current = null;
+
+  /* ===== 小工具 ===== */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined) n.textContent = text;
+    return n;
+  }
+  function firstChar(s) {
+    s = (s || '').trim();
+    if (!s) return '';
+    if (window.Intl && Intl.Segmenter) {
+      var it = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(s)[Symbol.iterator]();
+      return it.next().value.segment;
+    }
+    return Array.from(s)[0];
+  }
+  function guessEmoji(name) {
+    for (var i = 0; i < GUESS.length; i++) if (GUESS[i][0].test(name)) return GUESS[i][1];
+    return '🍴';
+  }
+  function pad(n) { return n < 10 ? '0' + n : '' + n; }
+  function fmtTime(t) {
+    var d = new Date(t);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  var toastTimer;
+  function toast(msg) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.classList.add('on');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { t.classList.remove('on'); }, 1800);
+  }
+
+  /* ===== 畫面：卡背 ===== */
+  function applyBack() {
+    var root = document.documentElement.style;
+    root.setProperty('--c1', COLORS[back.color][0]);
+    root.setProperty('--c2', COLORS[back.color][1]);
+    document.querySelectorAll('.card-back').forEach(function (n) {
+      n.className = n.className.replace(/\bpat\d\b/g, '').trim() + ' pat' + back.style;
+      var em = n.querySelector('.emblem');
+      if (em) em.textContent = back.emoji;
+    });
+    save(KEY_BACK, back);
+  }
+  function buildDeck() {
+    var deck = $('deck');
+    var rot = [-2, 1.5, -1, 2, 0];
+    for (var i = 0; i < 5; i++) {
+      var c = el('div', 'deck-card card-back');
+      c.style.setProperty('--x', (i * 1.5) + 'px');
+      c.style.setProperty('--y', (-i * 2.5) + 'px');
+      c.style.setProperty('--r', rot[i] + 'deg');
+      c.style.setProperty('--i', i);
+      c.appendChild(el('div', 'emblem'));
+      deck.appendChild(c);
+    }
+  }
+
+  /* ===== 畫面：上一餐 ===== */
+  function renderLast() {
+    var p = $('lastMeal');
+    p.textContent = '';
+    if (history.length === 0) {
+      p.textContent = '還沒有紀錄～抽一張吧！';
+    } else {
+      p.appendChild(document.createTextNode('上次吃了 '));
+      p.appendChild(el('strong', '', history[0].name + ' ' + history[0].emoji));
+    }
+  }
+
+  /* ===== 畫面：按鈕與提示 ===== */
+  function updateUI() {
+    $('drawBtn').hidden = state === 'result';
+    $('drawBtn').disabled = state === 'busy';
+    $('eatBtn').hidden = state !== 'result';
+    $('redrawBtn').hidden = state !== 'result';
+    $('hint').textContent =
+      state === 'idle' ? '按下「抽卡」，讓卡牌幫你決定' :
+      state === 'busy' ? '洗牌中…' : '不滿意可以再抽一次，滿意就按「就吃這個！」';
+  }
+
+  /* ===== 抽卡流程 ===== */
+  function hideCard(cb) {
+    var slot = $('slot'), fl = $('flipper');
+    slot.classList.remove('show');
+    slot.classList.add('leaving');
+    setTimeout(function () {
+      fl.classList.add('no-anim');
+      fl.classList.remove('flipped');
+      slot.classList.remove('leaving');
+      void fl.offsetWidth;
+      fl.classList.remove('no-anim');
+      if (cb) cb();
+    }, 320);
+  }
+  function startShuffle() {
+    var deck = $('deck');
+    deck.classList.add('shuffling');
+    setTimeout(function () {
+      deck.classList.remove('shuffling');
+      current = options[Math.floor(Math.random() * options.length)];
+      $('frontPic').textContent = current.emoji;
+      $('frontName').textContent = current.name;
+      $('slot').classList.add('show');
+      setTimeout(function () { $('flipper').classList.add('flipped'); }, 550);
+      setTimeout(function () { state = 'result'; updateUI(); }, 1500);
+    }, SHUFFLE_MS);
+  }
+  function draw() {
+    if (state === 'busy' || options.length < 2) return;
+    var wasResult = state === 'result';
+    state = 'busy';
+    updateUI();
+    if (wasResult) hideCard(startShuffle); else startShuffle();
+  }
+  function confirmEat() {
+    if (state !== 'result' || !current) return;
+    history.unshift({ name: current.name, emoji: current.emoji, t: Date.now() });
+    history = history.slice(0, 10);
+    save(KEY_HIS, history);
+    renderLast();
+    renderHistory();
+    toast('已記下：' + current.name + ' ' + current.emoji);
+    state = 'busy';
+    updateUI();
+    hideCard(function () { state = 'idle'; current = null; updateUI(); });
+  }
+
+  /* ===== 選單：選項 ===== */
+  function renderOptions() {
+    var ul = $('optList');
+    ul.textContent = '';
+    options.forEach(function (o, i) {
+      var li = el('li', 'item');
+      li.appendChild(el('span', 'e', o.emoji));
+      li.appendChild(el('span', 'n', o.name));
+      var d = el('button', 'del', '✕');
+      d.setAttribute('aria-label', '刪除 ' + o.name);
+      d.disabled = options.length <= 2;
+      d.addEventListener('click', function () {
+        if (options.length <= 2) return;
+        options.splice(i, 1);
+        save(KEY_OPT, options);
+        renderOptions();
+      });
+      li.appendChild(d);
+      ul.appendChild(li);
+    });
+  }
+  function addOption() {
+    var name = $('newName').value.trim();
+    var msg = $('addMsg');
+    if (!name) { msg.textContent = '請先輸入餐點名稱'; return; }
+    if (options.some(function (o) { return o.name === name; })) { msg.textContent = '已經有這張卡了'; return; }
+    if (options.length >= 30) { msg.textContent = '最多 30 張卡'; return; }
+    var emoji = firstChar($('newEmoji').value) || guessEmoji(name);
+    options.push({ name: name, emoji: emoji });
+    save(KEY_OPT, options);
+    renderOptions();
+    $('newName').value = '';
+    $('newEmoji').value = '';
+    msg.textContent = '已新增：' + name + ' ' + emoji;
+    $('newName').focus();
+  }
+
+  /* ===== 選單：歷史 ===== */
+  function renderHistory() {
+    var ul = $('hisList');
+    ul.textContent = '';
+    $('clearBtn').disabled = history.length === 0;
+    if (history.length === 0) { ul.appendChild(el('li', 'empty', '還沒有紀錄～')); return; }
+    history.forEach(function (h) {
+      var li = el('li', 'item');
+      li.appendChild(el('span', 'e', h.emoji));
+      li.appendChild(el('span', 'n', h.name));
+      li.appendChild(el('span', 't', fmtTime(h.t)));
+      ul.appendChild(li);
+    });
+  }
+
+  /* ===== 選單：卡背設定 ===== */
+  function renderBackSettings() {
+    var grid = $('patGrid');
+    grid.textContent = '';
+    for (var i = 0; i < 5; i++) {
+      (function (i) {
+        var b = el('button', 'pat-btn pat' + i);
+        b.setAttribute('aria-label', '花紋 ' + (i + 1));
+        b.setAttribute('aria-pressed', back.style === i);
+        b.addEventListener('click', function () { back.style = i; applyBack(); renderBackSettings(); });
+        grid.appendChild(b);
+      })(i);
+    }
+    var row = $('colorRow');
+    row.textContent = '';
+    COLORS.forEach(function (c, i) {
+      var b = el('button', 'color-btn');
+      b.style.background = 'linear-gradient(135deg,' + c[0] + ' 50%,' + c[1] + ' 50%)';
+      b.setAttribute('aria-label', '底色 ' + (i + 1));
+      b.setAttribute('aria-pressed', back.color === i);
+      b.addEventListener('click', function () { back.color = i; applyBack(); renderBackSettings(); });
+      row.appendChild(b);
+    });
+    $('backEmoji').value = back.emoji;
+  }
+
+  /* ===== 選單開關與分頁 ===== */
+  function openMenu() {
+    $('drawer').classList.add('open');
+    $('overlay').classList.add('open');
+    $('menuBtn').setAttribute('aria-expanded', 'true');
+  }
+  function closeMenu() {
+    $('drawer').classList.remove('open');
+    $('overlay').classList.remove('open');
+    $('menuBtn').setAttribute('aria-expanded', 'false');
+    $('menuBtn').focus();
+  }
+  function showTab(name) {
+    document.querySelectorAll('.tab').forEach(function (t) {
+      t.setAttribute('aria-selected', t.dataset.tab === name);
+    });
+    ['options', 'history', 'back'].forEach(function (n) { $('panel-' + n).hidden = n !== name; });
+  }
+
+  /* ===== 事件 ===== */
+  $('drawBtn').addEventListener('click', draw);
+  $('redrawBtn').addEventListener('click', draw);
+  $('eatBtn').addEventListener('click', confirmEat);
+  $('menuBtn').addEventListener('click', openMenu);
+  $('closeBtn').addEventListener('click', closeMenu);
+  $('overlay').addEventListener('click', closeMenu);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && $('drawer').classList.contains('open')) closeMenu(); });
+  document.querySelectorAll('.tab').forEach(function (t) {
+    t.addEventListener('click', function () { showTab(t.dataset.tab); });
+  });
+  $('addBtn').addEventListener('click', addOption);
+  $('newName').addEventListener('keydown', function (e) { if (e.key === 'Enter') addOption(); });
+  $('resetBtn').addEventListener('click', function () {
+    if (confirm('要恢復成預設選項嗎？你新增的卡片會被移除。')) {
+      options = clone(DEFAULT_OPTIONS);
+      save(KEY_OPT, options);
+      renderOptions();
+    }
+  });
+  $('clearBtn').addEventListener('click', function () {
+    if (history.length && confirm('要清除全部歷史紀錄嗎？')) {
+      history = [];
+      save(KEY_HIS, history);
+      renderHistory();
+      renderLast();
+    }
+  });
+  $('backEmoji').addEventListener('input', function () {
+    var c = firstChar(this.value);
+    if (c) { back.emoji = c; applyBack(); }
+  });
+  $('backEmoji').addEventListener('blur', function () { this.value = back.emoji; });
+  $('backEmojiReset').addEventListener('click', function () { back.emoji = '😋'; applyBack(); $('backEmoji').value = back.emoji; });
+
+  /* ===== 初始化 ===== */
+  var chips = $('chips');
+  CHIPS.forEach(function (c) {
+    var b = el('button', 'chip', c);
+    b.setAttribute('aria-label', '選擇圖案 ' + c);
+    b.addEventListener('click', function () { $('newEmoji').value = c; });
+    chips.appendChild(b);
+  });
+  buildDeck();
+  applyBack();
+  renderLast();
+  renderOptions();
+  renderHistory();
+  renderBackSettings();
+  updateUI();
+})();
+</script>
+</body>
+</html>
